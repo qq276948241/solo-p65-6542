@@ -7,10 +7,15 @@ from ..database import get_db
 from ..auth import get_current_user, RoleChecker
 from ..models import User, UserRole, Coach, Course, Booking, BookingStatus, DayOfWeek, Review
 from ..schemas import BookingResponse, CourseResponse, CoachResponse, UserResponse, ReviewResponse, ReviewListResponse
+from ..services.review_service import ReviewService
 
 router = APIRouter(prefix="/coach", tags=["Coach"])
 
 coach_checker = RoleChecker([UserRole.COACH])
+
+
+def get_review_service(db: Session = Depends(get_db)) -> ReviewService:
+    return ReviewService(db)
 
 
 def get_coach_from_user(user: User, db: Session) -> Coach:
@@ -84,49 +89,12 @@ def get_my_reviews(
     course_id: Optional[int] = Query(None, description="Filter reviews by course ID"),
     min_rating: Optional[int] = Query(None, ge=1, le=5, description="Filter by minimum rating"),
     current_user: User = Depends(coach_checker),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    review_service: ReviewService = Depends(get_review_service)
 ):
     coach = get_coach_from_user(current_user, db)
-
-    query = db.query(Review).filter(Review.coach_id == coach.id)
-    if course_id:
-        query = query.filter(Review.course_id == course_id)
-    if min_rating:
-        query = query.filter(Review.coach_rating >= min_rating)
-
-    reviews = query.order_by(Review.created_at.desc()).all()
-
-    review_responses = [_build_review_response(r) for r in reviews]
-
-    avg_course = None
-    avg_coach = None
-    if reviews:
-        avg_course = sum(r.course_rating for r in reviews) / len(reviews)
-        avg_coach = sum(r.coach_rating for r in reviews) / len(reviews)
-
-    return ReviewListResponse(
-        reviews=review_responses,
-        total=len(reviews),
-        average_course_rating=round(avg_course, 2) if avg_course else None,
-        average_coach_rating=round(avg_coach, 2) if avg_coach else None
-    )
-
-
-def _build_review_response(review: Review) -> ReviewResponse:
-    return ReviewResponse(
-        id=review.id,
-        booking_id=review.booking_id,
-        member_id=review.member_id,
-        course_id=review.course_id,
-        coach_id=review.coach_id,
-        course_rating=review.course_rating,
-        coach_rating=review.coach_rating,
-        comment=review.comment,
-        member_name=review.member.user.name,
-        course_name=review.course.name,
-        coach_name=review.coach.user.name,
-        created_at=review.created_at
-    )
+    reviews, avg_course, avg_coach = review_service.get_coach_reviews(coach, course_id, min_rating)
+    return review_service.build_review_list_response(reviews, avg_course, avg_coach)
 
 
 def _build_course_response(course: Course) -> CourseResponse:
