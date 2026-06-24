@@ -1,9 +1,13 @@
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException, status
 from typing import Optional, Tuple, List
 
 from ..models import Review, Booking, BookingStatus, Member, Coach
 from ..schemas import ReviewCreate, ReviewResponse, ReviewListResponse
+
+
+DUPLICATE_REVIEW_MESSAGE = "您已对该课程提交过评价，每节课仅可评价一次。若需修改请联系管理员。"
 
 
 class ReviewService:
@@ -12,8 +16,24 @@ class ReviewService:
 
     def create_review(self, review_data: ReviewCreate, member: Member) -> Review:
         booking = self._validate_booking_for_review(review_data.booking_id, member.id)
-        self._ensure_no_existing_review(review_data.booking_id)
-        return self._create_review_record(review_data, booking, member.id)
+        self._ensure_no_existing_review(review_data.booking_id, member.id, booking.course_id)
+        try:
+            return self._create_review_record(review_data, booking, member.id)
+        except IntegrityError as e:
+            self.db.rollback()
+            self._handle_integrity_error(e)
+
+    def _handle_integrity_error(self, error: IntegrityError) -> None:
+        error_msg = str(error.orig).lower() if error.orig else str(error).lower()
+        if "unique" in error_msg or "duplicate" in error_msg or "uq_reviews" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=DUPLICATE_REVIEW_MESSAGE
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"评价提交失败：{str(error)}"
+        )
 
     def get_member_reviews(self, member: Member) -> Tuple[List[Review], Optional[float], Optional[float]]:
         reviews = self.db.query(Review).filter(
@@ -85,14 +105,29 @@ class ReviewService:
             )
         return booking
 
-    def _ensure_no_existing_review(self, booking_id: int) -> None:
-        existing_review = self.db.query(Review).filter(
+    def _ensure_no_existing_review(self, booking_id: int, member_id: int, course_id: int) -> None:
+        existing_by_booking = self.db.query(Review).filter(
             Review.booking_id == booking_id
         ).first()
-        if existing_review:
+        if existing_by_booking:
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="You have already reviewed this booking"
+                status_code=status.HTTP_409_CONFLICT,
+                detail=DUPLICATE_REVIEW_MESSAGE
+            )
+
+        existing_by_member_course = self.db.query(Review).join(Booking).filter(
+            Review.member_id == member_id,
+            Review.course_id == course_id,
+            Booking.course_date == (
+                self.db.query(Booking.course_date)
+                .filter(Booking.id == booking_id)
+                .scalar_subquery()
+            )
+        ).first()
+        if existing_by_member_course:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=DUPLICATE_REVIEW_MESSAGE
             )
 
     def _create_review_record(self, review_data: ReviewCreate, booking: Booking, member_id: int) -> Review:

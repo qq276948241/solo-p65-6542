@@ -77,6 +77,12 @@ try:
             resp = requests.post('http://127.0.0.1:8000/member/reviews', headers=headers, json=review_data)
             print(f'Create review API: {resp.status_code}')
 
+            print("Testing duplicate review protection...")
+            resp = requests.post('http://127.0.0.1:8000/member/reviews', headers=headers, json=review_data)
+            print(f'Duplicate review test: {resp.status_code} - {resp.json().get("detail", "")[:50]}')
+            assert resp.status_code == 409, f"Expected 409 Conflict, got {resp.status_code}"
+            print("Duplicate protection working correctly!")
+
     coach_login = {'username': 'wang@fitness.com', 'password': 'coach123'}
     resp = requests.post('http://127.0.0.1:8000/auth/login', data=coach_login)
     if resp.status_code == 200:

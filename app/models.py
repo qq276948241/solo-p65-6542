@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Date, Time, Enum, Float
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Date, Time, Enum, Float, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime, timedelta
 import enum
@@ -165,9 +165,13 @@ class CheckIn(Base):
 
 class Review(Base):
     __tablename__ = "reviews"
+    __table_args__ = (
+        UniqueConstraint("booking_id", name="uq_reviews_booking_id"),
+        UniqueConstraint("member_id", "course_id", "booking_id", name="uq_reviews_member_course_booking"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    booking_id = Column(Integer, ForeignKey("bookings.id"), unique=True, nullable=False)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), nullable=False)
     member_id = Column(Integer, ForeignKey("members.id"), nullable=False)
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
     coach_id = Column(Integer, ForeignKey("coaches.id"), nullable=False)
