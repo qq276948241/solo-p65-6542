@@ -6,10 +6,11 @@ from calendar import day_name
 
 from ..database import get_db
 from ..auth import get_current_user, RoleChecker
-from ..models import User, UserRole, Member, Course, Booking, BookingStatus, MembershipCard, CheckIn, DayOfWeek
+from ..models import User, UserRole, Member, Course, Booking, BookingStatus, MembershipCard, CheckIn, DayOfWeek, Review
 from ..schemas import (
     BookingCreate, BookingResponse, ScheduleResponse,
-    MembershipCardResponse, CheckInResponse, BookingListResponse
+    MembershipCardResponse, CheckInResponse, BookingListResponse,
+    ReviewCreate, ReviewResponse, ReviewListResponse
 )
 
 router = APIRouter(prefix="/member", tags=["Member"])
@@ -313,6 +314,97 @@ def get_membership_cards(
     member = get_member_from_user(current_user, db)
     cards = db.query(MembershipCard).filter(MembershipCard.member_id == member.id).all()
     return cards
+
+
+@router.post("/reviews", response_model=ReviewResponse)
+def create_review(
+    review_data: ReviewCreate,
+    current_user: User = Depends(member_checker),
+    db: Session = Depends(get_db)
+):
+    member = get_member_from_user(current_user, db)
+
+    booking = db.query(Booking).filter(
+        Booking.id == review_data.booking_id,
+        Booking.member_id == member.id
+    ).first()
+    if not booking:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Booking not found"
+        )
+
+    if booking.status != BookingStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Can only review completed bookings"
+        )
+
+    existing_review = db.query(Review).filter(Review.booking_id == review_data.booking_id).first()
+    if existing_review:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You have already reviewed this booking"
+        )
+
+    new_review = Review(
+        booking_id=review_data.booking_id,
+        member_id=member.id,
+        course_id=booking.course_id,
+        coach_id=booking.course.coach_id,
+        course_rating=review_data.course_rating,
+        coach_rating=review_data.coach_rating,
+        comment=review_data.comment
+    )
+    db.add(new_review)
+    db.commit()
+    db.refresh(new_review)
+
+    return _build_review_response(new_review)
+
+
+@router.get("/reviews", response_model=ReviewListResponse)
+def get_my_reviews(
+    current_user: User = Depends(member_checker),
+    db: Session = Depends(get_db)
+):
+    member = get_member_from_user(current_user, db)
+
+    reviews = db.query(Review).filter(
+        Review.member_id == member.id
+    ).order_by(Review.created_at.desc()).all()
+
+    review_responses = [_build_review_response(r) for r in reviews]
+
+    avg_course = None
+    avg_coach = None
+    if reviews:
+        avg_course = sum(r.course_rating for r in reviews) / len(reviews)
+        avg_coach = sum(r.coach_rating for r in reviews) / len(reviews)
+
+    return ReviewListResponse(
+        reviews=review_responses,
+        total=len(reviews),
+        average_course_rating=round(avg_course, 2) if avg_course else None,
+        average_coach_rating=round(avg_coach, 2) if avg_coach else None
+    )
+
+
+def _build_review_response(review: Review) -> ReviewResponse:
+    return ReviewResponse(
+        id=review.id,
+        booking_id=review.booking_id,
+        member_id=review.member_id,
+        course_id=review.course_id,
+        coach_id=review.coach_id,
+        course_rating=review.course_rating,
+        coach_rating=review.coach_rating,
+        comment=review.comment,
+        member_name=review.member.user.name,
+        course_name=review.course.name,
+        coach_name=review.coach.user.name,
+        created_at=review.created_at
+    )
 
 
 def _build_booking_response(booking: Booking, db: Session) -> BookingResponse:

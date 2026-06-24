@@ -188,3 +188,35 @@ class LoginRequest(BaseModel):
 
 class CheckInRequest(BaseModel):
     qr_code_data: str
+
+
+class ReviewBase(BaseModel):
+    course_rating: int = Field(..., ge=1, le=5, description="Course rating from 1 to 5 stars")
+    coach_rating: int = Field(..., ge=1, le=5, description="Coach rating from 1 to 5 stars")
+    comment: Optional[str] = Field(None, max_length=500, description="Optional text comment")
+
+
+class ReviewCreate(ReviewBase):
+    booking_id: int
+
+
+class ReviewResponse(ReviewBase):
+    id: int
+    booking_id: int
+    member_id: int
+    course_id: int
+    coach_id: int
+    member_name: Optional[str] = None
+    course_name: Optional[str] = None
+    coach_name: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ReviewListResponse(BaseModel):
+    reviews: List[ReviewResponse]
+    total: int
+    average_course_rating: Optional[float] = None
+    average_coach_rating: Optional[float] = None

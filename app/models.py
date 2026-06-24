@@ -60,6 +60,7 @@ class Coach(Base):
 
     user = relationship("User", back_populates="coach")
     courses = relationship("Course", back_populates="coach")
+    reviews = relationship("Review", back_populates="coach")
 
 
 class Member(Base):
@@ -73,6 +74,7 @@ class Member(Base):
     membership_cards = relationship("MembershipCard", back_populates="member")
     bookings = relationship("Booking", back_populates="member")
     check_ins = relationship("CheckIn", back_populates="member")
+    reviews = relationship("Review", back_populates="member")
 
 
 class MembershipCard(Base):
@@ -123,6 +125,7 @@ class Course(Base):
 
     coach = relationship("Coach", back_populates="courses")
     bookings = relationship("Booking", back_populates="course")
+    reviews = relationship("Review", back_populates="course")
 
 
 class Booking(Base):
@@ -158,3 +161,22 @@ class CheckIn(Base):
 
     booking = relationship("Booking", back_populates="check_in")
     member = relationship("Member", back_populates="check_ins")
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    booking_id = Column(Integer, ForeignKey("bookings.id"), unique=True, nullable=False)
+    member_id = Column(Integer, ForeignKey("members.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    coach_id = Column(Integer, ForeignKey("coaches.id"), nullable=False)
+    course_rating = Column(Integer, nullable=False)
+    coach_rating = Column(Integer, nullable=False)
+    comment = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    booking = relationship("Booking")
+    member = relationship("Member", back_populates="reviews")
+    course = relationship("Course", back_populates="reviews")
+    coach = relationship("Coach", back_populates="reviews")

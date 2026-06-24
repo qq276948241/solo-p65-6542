@@ -4,7 +4,7 @@ from datetime import datetime, date, time, timedelta
 from app.database import SessionLocal, engine, Base
 from app.models import (
     User, UserRole, Coach, Member, Course, MembershipCard,
-    MembershipType, DayOfWeek, Booking, BookingStatus, CheckIn
+    MembershipType, DayOfWeek, Booking, BookingStatus, CheckIn, Review
 )
 from app.auth import get_password_hash
 
@@ -179,7 +179,36 @@ try:
                 db.add(checkin)
                 membership.remaining_classes -= 1
 
+    print("Creating sample reviews...")
+    completed_bookings = db.query(Booking).filter(
+        Booking.member_id == member.id,
+        Booking.status == BookingStatus.COMPLETED
+    ).all()
+
+    comments = [
+        "教练非常专业，课程安排很合理，强烈推荐！",
+        "课程氛围很好，运动量适中，下次还会来。",
+        "王教练的指导很细致，动作纠正到位。",
+        "设施齐全，体验很棒，已经办了季卡！",
+        "强度刚好，出了很多汗，感觉很充实。",
+    ]
+
+    review_count = 0
+    for i, booking in enumerate(completed_bookings):
+        review = Review(
+            booking_id=booking.id,
+            member_id=member.id,
+            course_id=booking.course_id,
+            coach_id=booking.course.coach_id,
+            course_rating=5 - (i % 2),
+            coach_rating=5 - (i % 3),
+            comment=comments[i % len(comments)]
+        )
+        db.add(review)
+        review_count += 1
+
     db.commit()
+    print(f"Created {review_count} sample reviews")
     print("\nDatabase initialized successfully!")
     print("\nDefault accounts:")
     print("  Admin:    admin@fitness.com / admin123")

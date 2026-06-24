@@ -53,6 +53,38 @@ try:
         print(f'CSV export API: {resp.status_code}')
         resp = requests.get('http://127.0.0.1:8000/admin/statistics', headers=headers)
         print(f'Statistics API: {resp.status_code} - {resp.json()}')
+
+    print("\nTesting Review API...")
+    login_data = {'username': 'member@fitness.com', 'password': 'member123'}
+    resp = requests.post('http://127.0.0.1:8000/auth/login', data=login_data)
+    if resp.status_code == 200:
+        token = resp.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+        
+        resp = requests.get('http://127.0.0.1:8000/member/reviews', headers=headers)
+        print(f'Member reviews API: {resp.status_code} - {resp.json()["total"]} reviews found')
+
+        resp = requests.get('http://127.0.0.1:8000/member/bookings?status=completed', headers=headers)
+        bookings = resp.json()["bookings"]
+        if bookings:
+            booking_id = bookings[0]["id"]
+            review_data = {
+                "booking_id": booking_id,
+                "course_rating": 5,
+                "coach_rating": 4,
+                "comment": "Test review from API"
+            }
+            resp = requests.post('http://127.0.0.1:8000/member/reviews', headers=headers, json=review_data)
+            print(f'Create review API: {resp.status_code}')
+
+    coach_login = {'username': 'wang@fitness.com', 'password': 'coach123'}
+    resp = requests.post('http://127.0.0.1:8000/auth/login', data=coach_login)
+    if resp.status_code == 200:
+        token = resp.json()['access_token']
+        headers = {'Authorization': f'Bearer {token}'}
+        resp = requests.get('http://127.0.0.1:8000/coach/reviews', headers=headers)
+        data = resp.json()
+        print(f'Coach reviews API: {resp.status_code} - {data["total"]} reviews, avg coach rating: {data.get("average_coach_rating")}')
     
     print('\nAll tests passed!')
 except Exception as e:
